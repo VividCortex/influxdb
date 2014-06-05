@@ -246,8 +246,8 @@ func splitKey(key string) ([]string, error) {
 		return nil, errors.New("splitKey(): invalid key")
 	}
 	series := parts[0]
-	timestampSequence := parts[1][:16]
-	field := parts[1][16:]
+	timestampSequence := parts[1][:17]
+	field := parts[1][17:]
 
 	return append([]string(nil), series, timestampSequence, field), nil
 }
@@ -266,9 +266,7 @@ func decodeTimestampSequence(str string) (uint64, uint64) {
 func executeQueryForSeries(db *bolt.DB, querySpec *parser.QuerySpec, series string, fields []string, processor cluster.QueryProcessor) (error, bool) {
 	if len(fields) > 0 && fields[0] == "*" {
 		fields = getFields(db, series)
-
 	}
-
 	keepGoing := true
 
 	startTime := itou(querySpec.GetStartTime().UnixNano() / 1000)
