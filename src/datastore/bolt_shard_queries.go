@@ -207,8 +207,8 @@ func (s *BoltShard) executeDeleteFromSeriesQuery(db *bolt.DB, querySpec *parser.
 }
 
 func deleteFromSeries(db *bolt.DB, series string, start time.Time, end time.Time) error {
-	startTime := int64ToUint64(start.UnixNano() / 1000)
-	endTime := int64ToUint64(end.UnixNano() / 1000)
+	startTime := itou(start.UnixNano() / 1000)
+	endTime := itou(end.UnixNano() / 1000)
 
 	keyBuffer := bytes.NewBuffer(nil)
 	keyBuffer.WriteString(series)
@@ -266,12 +266,13 @@ func decodeTimestampSequence(str string) (uint64, uint64) {
 func executeQueryForSeries(db *bolt.DB, querySpec *parser.QuerySpec, series string, fields []string, processor cluster.QueryProcessor) (error, bool) {
 	if len(fields) > 0 && fields[0] == "*" {
 		fields = getFields(db, series)
+
 	}
 
 	keepGoing := true
 
-	startTime := int64ToUint64(querySpec.GetStartTime().UnixNano() / 1000)
-	endTime := int64ToUint64(querySpec.GetEndTime().UnixNano() / 1000)
+	startTime := itou(querySpec.GetStartTime().UnixNano() / 1000)
+	endTime := itou(querySpec.GetEndTime().UnixNano() / 1000)
 
 	buf := bytes.NewBuffer(nil)
 	protoBuf := proto.NewBuffer(nil)
@@ -320,7 +321,7 @@ func executeQueryForSeries(db *bolt.DB, querySpec *parser.QuerySpec, series stri
 				point = &protocol.Point{Values: make([]*protocol.FieldValue, len(fields), len(fields))}
 				seriesOutgoing.Points = append(seriesOutgoing.Points, point)
 
-				signedTimestamp := int64(t)
+				signedTimestamp := utoi(t)
 				point.Timestamp = &signedTimestamp
 				point.SequenceNumber = &s
 				prevTs = t
@@ -334,7 +335,6 @@ func executeQueryForSeries(db *bolt.DB, querySpec *parser.QuerySpec, series stri
 				log.Error(err)
 				return err
 			}
-
 			point.Values[fieldNameIndex[parts[2]]] = fv
 		}
 

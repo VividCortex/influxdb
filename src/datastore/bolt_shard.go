@@ -9,26 +9,32 @@ import (
 	"bytes"
 	"encoding/binary"
 	"os"
+	"sync"
 
 	"code.google.com/p/goprotobuf/proto"
 	"github.com/VividCortex/bolt"
 )
 
 type BoltShard struct {
-	baseDir string
-	dbs     map[string]*bolt.DB
-	closed  bool
+	baseDir  string
+	dbs      map[string]*bolt.DB
+	dbsMutex *sync.RWMutex
+	closed   bool
 }
 
 func NewBoltShard(baseDir string) *BoltShard {
 	return &BoltShard{
-		baseDir: baseDir,
-		closed:  false,
-		dbs:     make(map[string]*bolt.DB),
+		baseDir:  baseDir,
+		closed:   false,
+		dbs:      make(map[string]*bolt.DB),
+		dbsMutex: &sync.RWMutex{},
 	}
 }
 
 func (s *BoltShard) DropDatabase(database string) error {
+	s.dbsMutex.Lock()
+	defer s.dbsMutex.Unlock()
+
 	var (
 		db *bolt.DB
 		ok bool
@@ -44,8 +50,12 @@ func (s *BoltShard) DropDatabase(database string) error {
 }
 
 func (s *BoltShard) close() {
-	for _, db := range s.dbs {
+	s.dbsMutex.Lock()
+	defer s.dbsMutex.Unlock()
+
+	for databaseName, db := range s.dbs {
 		db.Close()
+		delete(s.dbs, databaseName)
 	}
 	s.closed = true
 }
@@ -55,6 +65,9 @@ func (s *BoltShard) IsClosed() bool {
 }
 
 func (s *BoltShard) Query(querySpec *parser.QuerySpec, processor cluster.QueryProcessor) error {
+	s.dbsMutex.RLock()
+	defer s.dbsMutex.RUnlock()
+
 	databaseName := querySpec.Database()
 
 	var (
@@ -89,6 +102,9 @@ func (s *BoltShard) Query(querySpec *parser.QuerySpec, processor cluster.QueryPr
 }
 
 func (s *BoltShard) Write(database string, series []*protocol.Series) error {
+	s.dbsMutex.RLock()
+	defer s.dbsMutex.RUnlock()
+
 	var err error
 	db, ok := s.dbs[database]
 	if !ok {
@@ -125,7 +141,7 @@ func (s *BoltShard) Write(database string, series []*protocol.Series) error {
 
 			for _, point := range serie.GetPoints() {
 				// Each point has a timestamp and sequence number.
-				timestamp := uint64(point.GetTimestamp())
+				timestamp := itou(point.GetTimestamp())
 
 				// key: <series name>\x00<timestamp><sequence number><field>
 				keyBuffer.WriteString(seriesName)
@@ -148,7 +164,7 @@ func (s *BoltShard) Write(database string, series []*protocol.Series) error {
 						return fieldBucketErr
 					}
 					fieldBucket.Put([]byte(seriesName+field), nil)
-					b.Put(append(keyBuffer.Bytes(), []byte(field)...), valueBuffer.Bytes())
+					b.Put(append(keyBuffer.Bytes(), []byte("\x00"+field)...), valueBuffer.Bytes())
 				}
 			}
 		}
