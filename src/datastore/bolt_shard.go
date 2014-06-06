@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"os"
+	"sync"
 
 	"code.google.com/p/goprotobuf/proto"
 	"github.com/VividCortex/bolt"
@@ -19,6 +20,7 @@ type BoltShard struct {
 	baseDir string
 	dbs     map[string]*bolt.DB
 	closed  bool
+	lock    *sync.Mutex
 }
 
 func NewBoltShard(baseDir string) *BoltShard {
@@ -26,6 +28,7 @@ func NewBoltShard(baseDir string) *BoltShard {
 		baseDir: baseDir,
 		closed:  false,
 		dbs:     make(map[string]*bolt.DB),
+		lock:    &sync.Mutex{},
 	}
 }
 
@@ -93,6 +96,9 @@ func (s *BoltShard) Query(querySpec *parser.QuerySpec, processor cluster.QueryPr
 }
 
 func (s *BoltShard) Write(database string, series []*protocol.Series) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	if s.closed {
 		return errors.New("shard closed")
 	}
