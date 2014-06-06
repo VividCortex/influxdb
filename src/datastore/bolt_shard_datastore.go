@@ -35,9 +35,6 @@ func NewBoltShardDatastore(config *configuration.Configuration) (*BoltShardDatas
 }
 
 func (d *BoltShardDatastore) BufferWrite(request *protocol.Request) {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-
 	d.writeBuffer.Write(request)
 }
 
@@ -45,8 +42,9 @@ func (d *BoltShardDatastore) Close() {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	for _, shard := range d.shards {
+	for i, shard := range d.shards {
 		shard.close()
+		delete(d.shards, i)
 	}
 }
 
@@ -86,16 +84,9 @@ func (d *BoltShardDatastore) GetOrCreateShard(id uint32) (cluster.LocalShardDb, 
 }
 
 func (d *BoltShardDatastore) ReturnShard(id uint32) {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-	//	d.shards[id].close()
-	//	delete(d.shards, id)
 }
 
 func (d *BoltShardDatastore) SetWriteBuffer(writeBuffer *cluster.WriteBuffer) {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-
 	d.writeBuffer = writeBuffer
 }
 

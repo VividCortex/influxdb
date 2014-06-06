@@ -70,8 +70,6 @@ func (s *BoltShard) IsClosed() bool {
 
 func (s *BoltShard) Query(querySpec *parser.QuerySpec, processor cluster.QueryProcessor) error {
 	trace.Trace()
-	s.lock.Lock()
-	defer s.lock.Unlock()
 
 	databaseName := querySpec.Database()
 

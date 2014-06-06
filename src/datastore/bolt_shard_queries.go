@@ -16,7 +16,6 @@ import (
 	"code.google.com/p/goprotobuf/proto"
 	log "code.google.com/p/log4go"
 	"github.com/VividCortex/bolt"
-	"github.com/VividCortex/trace"
 )
 
 func (s *BoltShard) getSeries(db *bolt.DB) []string {
@@ -92,13 +91,10 @@ func getMatches(r *regexp.Regexp, strings []string) []string {
 }
 
 func (s *BoltShard) executeSeriesQuery(db *bolt.DB, querySpec *parser.QuerySpec, processor cluster.QueryProcessor) error {
-	trace.Trace()
 	seriesNames := s.getSeries(db)
 
 	for series, fields := range querySpec.SelectQuery().GetReferencedColumns() {
-		trace.Trace()
 		if regex, ok := series.GetCompiledRegex(); ok {
-			trace.Trace()
 			for _, matchedSeries := range getMatches(regex, seriesNames) {
 				if !querySpec.HasReadAccess(matchedSeries) {
 					continue
@@ -269,8 +265,6 @@ func decodeTimestampSequence(str string) (uint64, uint64) {
 }
 
 func executeQueryForSeries(db *bolt.DB, querySpec *parser.QuerySpec, series string, fields []string, processor cluster.QueryProcessor) (error, bool) {
-	trace.Trace()
-	fmt.Println("series:", series)
 	if len(fields) > 0 && fields[0] == "*" {
 		fields = getFields(db, series)
 	}
@@ -313,7 +307,7 @@ func executeQueryForSeries(db *bolt.DB, querySpec *parser.QuerySpec, series stri
 				continue
 			}
 			t, s := decodeTimestampSequence(parts[1])
-			if t > endTime {
+			if t > endTime || parts[0] != series {
 				break
 			}
 
@@ -341,7 +335,6 @@ func executeQueryForSeries(db *bolt.DB, querySpec *parser.QuerySpec, series stri
 			}
 			point.Values[fieldNameIndex[parts[2]]] = fv
 		}
-
 		keepGoing = processor.YieldSeries(seriesOutgoing)
 		return nil
 	}), keepGoing
