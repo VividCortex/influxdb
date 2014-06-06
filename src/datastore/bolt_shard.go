@@ -8,33 +8,28 @@ import (
 
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"os"
-	"sync"
 
 	"code.google.com/p/goprotobuf/proto"
 	"github.com/VividCortex/bolt"
 )
 
 type BoltShard struct {
-	baseDir  string
-	dbs      map[string]*bolt.DB
-	dbsMutex *sync.RWMutex
-	closed   bool
+	baseDir string
+	dbs     map[string]*bolt.DB
+	closed  bool
 }
 
 func NewBoltShard(baseDir string) *BoltShard {
 	return &BoltShard{
-		baseDir:  baseDir,
-		closed:   false,
-		dbs:      make(map[string]*bolt.DB),
-		dbsMutex: &sync.RWMutex{},
+		baseDir: baseDir,
+		closed:  false,
+		dbs:     make(map[string]*bolt.DB),
 	}
 }
 
 func (s *BoltShard) DropDatabase(database string) error {
-	s.dbsMutex.Lock()
-	defer s.dbsMutex.Unlock()
-
 	var (
 		db *bolt.DB
 		ok bool
@@ -46,13 +41,12 @@ func (s *BoltShard) DropDatabase(database string) error {
 	}
 
 	db.Close()
+	delete(s.dbs, database)
+
 	return os.Remove(s.baseDir + "/" + database)
 }
 
 func (s *BoltShard) close() {
-	s.dbsMutex.Lock()
-	defer s.dbsMutex.Unlock()
-
 	for databaseName, db := range s.dbs {
 		db.Close()
 		delete(s.dbs, databaseName)
@@ -65,9 +59,6 @@ func (s *BoltShard) IsClosed() bool {
 }
 
 func (s *BoltShard) Query(querySpec *parser.QuerySpec, processor cluster.QueryProcessor) error {
-	s.dbsMutex.RLock()
-	defer s.dbsMutex.RUnlock()
-
 	databaseName := querySpec.Database()
 
 	var (
@@ -102,11 +93,18 @@ func (s *BoltShard) Query(querySpec *parser.QuerySpec, processor cluster.QueryPr
 }
 
 func (s *BoltShard) Write(database string, series []*protocol.Series) error {
-	s.dbsMutex.RLock()
-	defer s.dbsMutex.RUnlock()
+	if s.closed {
+		return errors.New("shard closed")
+	}
 
 	var err error
-	db, ok := s.dbs[database]
+
+	var (
+		db *bolt.DB
+		ok bool
+	)
+
+	db, ok = s.dbs[database]
 	if !ok {
 		db, err = bolt.Open(s.baseDir+"/"+database, 0666)
 		if err != nil {
@@ -118,13 +116,15 @@ func (s *BoltShard) Write(database string, series []*protocol.Series) error {
 
 	// transactional insert
 	return db.Update(func(tx *bolt.Tx) error {
+		var b *bolt.Bucket
 		for _, serie := range series {
+
 			seriesName := serie.GetName()
 			if seriesName == "" {
 				continue
 			}
 
-			b, err := tx.CreateBucketIfNotExists([]byte("series"))
+			b, err = tx.CreateBucketIfNotExists([]byte("series"))
 			if err != nil {
 				return err
 			}
@@ -143,7 +143,8 @@ func (s *BoltShard) Write(database string, series []*protocol.Series) error {
 				// Each point has a timestamp and sequence number.
 				timestamp := itou(point.GetTimestamp())
 
-				// key: <series name>\x00<timestamp><sequence number><field>
+				// key: <series name>\x00<timestamp><sequence number>\x00<field>
+				keyBuffer.Reset()
 				keyBuffer.WriteString(seriesName)
 				keyBuffer.WriteByte(0)
 
@@ -154,6 +155,7 @@ func (s *BoltShard) Write(database string, series []*protocol.Series) error {
 					if point.Values[fieldIndex].GetIsNull() {
 						continue
 					}
+					valueBuffer.Reset()
 					err = valueBuffer.Marshal(point.Values[fieldIndex])
 					if err != nil {
 						return err
@@ -163,8 +165,8 @@ func (s *BoltShard) Write(database string, series []*protocol.Series) error {
 					if fieldBucketErr != nil {
 						return fieldBucketErr
 					}
-					fieldBucket.Put([]byte(seriesName+field), nil)
-					b.Put(append(keyBuffer.Bytes(), []byte("\x00"+field)...), valueBuffer.Bytes())
+					fieldBucket.Put([]byte(seriesName+"\x00"+field), nil)
+					b.Put(append(keyBuffer.Bytes(), []byte(field)...), valueBuffer.Bytes())
 				}
 			}
 		}

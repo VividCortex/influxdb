@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 )
 
 type BoltShardDatastore struct {
@@ -16,21 +15,19 @@ type BoltShardDatastore struct {
 	config      *configuration.Configuration
 	writeBuffer *cluster.WriteBuffer
 	shards      map[uint32]*BoltShard
-	shardMutex  *sync.RWMutex
 }
 
 func NewBoltShardDatastore(config *configuration.Configuration) (*BoltShardDatastore, error) {
-	baseDir := filepath.Join(config.DataDir, "shards")
+	baseDir := filepath.Join(config.DataDir, "shard_data")
 	err := os.MkdirAll(baseDir, 0744)
 	if err != nil {
 		return nil, err
 	}
 
 	return &BoltShardDatastore{
-		baseDir:    baseDir,
-		config:     config,
-		shards:     make(map[uint32]*BoltShard),
-		shardMutex: &sync.RWMutex{},
+		baseDir: baseDir,
+		config:  config,
+		shards:  make(map[uint32]*BoltShard),
 	}, nil
 }
 
@@ -39,18 +36,12 @@ func (d *BoltShardDatastore) BufferWrite(request *protocol.Request) {
 }
 
 func (d *BoltShardDatastore) Close() {
-	d.shardMutex.Lock()
-	defer d.shardMutex.Unlock()
-
 	for _, shard := range d.shards {
 		shard.close()
 	}
 }
 
 func (d *BoltShardDatastore) DeleteShard(shardId uint32) error {
-	d.shardMutex.Lock()
-	defer d.shardMutex.Unlock()
-
 	shardDir := filepath.Join(d.baseDir, fmt.Sprint(shardId))
 	err := os.RemoveAll(shardDir)
 	if err != nil {
@@ -62,9 +53,6 @@ func (d *BoltShardDatastore) DeleteShard(shardId uint32) error {
 }
 
 func (d *BoltShardDatastore) GetOrCreateShard(id uint32) (cluster.LocalShardDb, error) {
-	d.shardMutex.RLock()
-	defer d.shardMutex.RUnlock()
-
 	var (
 		shard   *BoltShard
 		present bool
@@ -83,11 +71,8 @@ func (d *BoltShardDatastore) GetOrCreateShard(id uint32) (cluster.LocalShardDb, 
 }
 
 func (d *BoltShardDatastore) ReturnShard(id uint32) {
-	d.shardMutex.RLock()
-	defer d.shardMutex.RUnlock()
-
-	d.shards[id].close()
-	delete(d.shards, id)
+	//	d.shards[id].close()
+	//	delete(d.shards, id)
 }
 
 func (d *BoltShardDatastore) SetWriteBuffer(writeBuffer *cluster.WriteBuffer) {
@@ -95,9 +80,6 @@ func (d *BoltShardDatastore) SetWriteBuffer(writeBuffer *cluster.WriteBuffer) {
 }
 
 func (d *BoltShardDatastore) Write(request *protocol.Request) error {
-	d.shardMutex.RLock()
-	defer d.shardMutex.RUnlock()
-
 	shardDb, err := d.GetOrCreateShard(*request.ShardId)
 	if err != nil {
 		return err
