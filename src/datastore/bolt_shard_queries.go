@@ -195,7 +195,6 @@ func (s *BoltShard) executeDeleteFromSeriesQuery(db *bolt.DB, querySpec *parser.
 		var err error
 		if regex, ok := seriesSelector.Name.GetCompiledRegex(); ok {
 			for _, matchedSeries := range getMatches(regex, seriesNames) {
-				time.Sleep(time.Millisecond * 50)
 				err = deleteFromSeries(db, matchedSeries, query.GetStartTime(), query.GetEndTime())
 				if err != nil {
 					return err
