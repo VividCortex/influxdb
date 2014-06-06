@@ -135,6 +135,7 @@ github.com/BurntSushi/toml \
 github.com/influxdb/influxdb-go \
 code.google.com/p/gogoprotobuf/proto \
 github.com/VividCortex/bolt \
+github.com/VividCortex/trace \
 $(proto_dependency)
 
 dependencies_paths := $(addprefix src/,$(dependencies))
