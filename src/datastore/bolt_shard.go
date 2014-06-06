@@ -14,6 +14,7 @@ import (
 
 	"code.google.com/p/goprotobuf/proto"
 	"github.com/VividCortex/bolt"
+	"github.com/VividCortex/trace"
 )
 
 type BoltShard struct {
@@ -33,6 +34,9 @@ func NewBoltShard(baseDir string) *BoltShard {
 }
 
 func (s *BoltShard) DropDatabase(database string) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	var (
 		db *bolt.DB
 		ok bool
@@ -50,6 +54,9 @@ func (s *BoltShard) DropDatabase(database string) error {
 }
 
 func (s *BoltShard) close() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	for databaseName, db := range s.dbs {
 		db.Close()
 		delete(s.dbs, databaseName)
@@ -62,6 +69,10 @@ func (s *BoltShard) IsClosed() bool {
 }
 
 func (s *BoltShard) Query(querySpec *parser.QuerySpec, processor cluster.QueryProcessor) error {
+	trace.Trace()
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	databaseName := querySpec.Database()
 
 	var (
@@ -171,8 +182,12 @@ func (s *BoltShard) Write(database string, series []*protocol.Series) error {
 					if fieldBucketErr != nil {
 						return fieldBucketErr
 					}
-					fieldBucket.Put([]byte(seriesName+"\x00"+field), nil)
-					b.Put(append(keyBuffer.Bytes(), []byte(field)...), valueBuffer.Bytes())
+
+					fieldBucketKey := []byte(seriesName + "\x00" + field)
+					fieldBucket.Put(fieldBucketKey, nil)
+
+					dataBucketKey := append(keyBuffer.Bytes(), []byte(field)...)
+					b.Put(dataBucketKey, valueBuffer.Bytes())
 				}
 			}
 		}
