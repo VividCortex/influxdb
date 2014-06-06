@@ -246,8 +246,8 @@ func splitKey(key string) ([]string, error) {
 		return nil, errors.New("splitKey(): invalid key")
 	}
 	series := parts[0]
-	timestampSequence := parts[1][:17]
-	field := parts[1][17:]
+	timestampSequence := parts[1][:16]
+	field := parts[1][16:]
 
 	return append([]string(nil), series, timestampSequence, field), nil
 }
