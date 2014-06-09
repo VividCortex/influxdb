@@ -14,7 +14,6 @@ import (
 
 	"code.google.com/p/goprotobuf/proto"
 	"github.com/VividCortex/bolt"
-	"github.com/VividCortex/trace"
 )
 
 type BoltShard struct {
@@ -69,8 +68,6 @@ func (s *BoltShard) IsClosed() bool {
 }
 
 func (s *BoltShard) Query(querySpec *parser.QuerySpec, processor cluster.QueryProcessor) error {
-	trace.Trace()
-
 	databaseName := querySpec.Database()
 
 	var (
